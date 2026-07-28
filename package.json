@@ -1,0 +1,28 @@
+{
+  "name": "fitquest-backend",
+  "version": "1.0.0",
+  "description": "FitQuest API — owns all Supabase access (data, storage, LLM proxy) so the frontend never touches Supabase directly for anything but auth.",
+  "type": "module",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "node --watch src/app.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.108.2",
+    "compression": "^1.7.4",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.3.1",
+    "helmet": "^7.1.0",
+    "morgan": "^1.10.0",
+    "multer": "^2.2.0",
+    "winston": "^3.13.0",
+    "ws": "^8.21.1"
+  }
+}
