@@ -1,4 +1,4 @@
-import { getSupabaseAdmin } from '../utils/supabaseAdmin.js';
+import { getSupabaseAdmin, createAuthClient } from '../utils/supabaseAdmin.js';
 import { setSessionCookies, clearSessionCookies } from '../utils/cookies.js';
 
 // ── requireAuth ───────────────────────────────────────────────────────────────
@@ -31,7 +31,7 @@ export async function requireAuth(req, res, next) {
             const refreshToken = req.cookies?.sb_rt || null;
             if (!refreshToken) return res.status(401).json({ error: 'Not authenticated.' });
 
-            const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
+            const { data, error } = await createAuthClient().auth.refreshSession({ refresh_token: refreshToken });
             if (error || !data?.session?.user) {
                 clearSessionCookies(res);
                 return res.status(401).json({ error: 'Session expired.' });

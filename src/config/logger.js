@@ -4,8 +4,13 @@ import { mkdirSync, existsSync } from 'fs';
 const { combine, timestamp, printf, colorize, errors } = format;
 const isProd = process.env.NODE_ENV === 'production';
 
-const logFormat = printf(({ level, message, timestamp, stack }) => {
-    return `${timestamp} [${level}]: ${stack || message}`;
+const logFormat = printf(({ level, message, timestamp, stack, ...meta }) => {
+    // winston always adds these internal symbol-keyed fields — never useful to print
+    delete meta[Symbol.for('level')];
+    delete meta[Symbol.for('message')];
+    delete meta[Symbol.for('splat')];
+    const metaStr = Object.keys(meta).length ? ` ${JSON.stringify(meta)}` : '';
+    return `${timestamp} [${level}]: ${stack || message}${metaStr}`;
 });
 
 const allTransports = [

@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import crypto from 'crypto';
-import { getSupabaseAdmin } from '../utils/supabaseAdmin.js';
+import { getSupabaseAdmin, createAuthClient } from '../utils/supabaseAdmin.js';
 import { requireAuth } from '../middleware/auth.js';
 import { authLimiter, adminSetupLimiter } from '../middleware/security.js';
 import { setSessionCookies, clearSessionCookies, setPkceCookie, clearPkceCookie } from '../utils/cookies.js';
+import { ensureProfile } from '../services/profileService.js';
 import { config } from '../config/env.js';
 import logger from '../config/logger.js';
 
@@ -15,10 +16,10 @@ router.post('/login', authLimiter, async (req, res, next) => {
         const { email, password } = req.body || {};
         if (!email || !password) return res.status(400).json({ error: 'Email and password are required.' });
 
-        const supabase = getSupabaseAdmin();
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error } = await createAuthClient().auth.signInWithPassword({ email, password });
         if (error) return res.status(401).json({ error: error.message });
 
+        await ensureProfile(data.user);
         setSessionCookies(res, data.session);
         res.json({ user: { id: data.user.id, email: data.user.email } });
     } catch (err) {
@@ -32,11 +33,11 @@ router.post('/signup', authLimiter, async (req, res, next) => {
         const { email, password } = req.body || {};
         if (!email || !password) return res.status(400).json({ error: 'Email and password are required.' });
 
-        const supabase = getSupabaseAdmin();
-        const { data, error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await createAuthClient().auth.signUp({ email, password });
         if (error) return res.status(400).json({ error: error.message });
 
         if (data.session) {
+            await ensureProfile(data.user);
             setSessionCookies(res, data.session);
             return res.json({ user: { id: data.user.id, email: data.user.email }, pending: false });
         }
@@ -61,8 +62,7 @@ router.post('/admin-setup', adminSetupLimiter, async (req, res, next) => {
             return res.status(400).json({ error: 'Full name, email and password are required.' });
         }
 
-        const supabase = getSupabaseAdmin();
-        const { data, error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await createAuthClient().auth.signUp({ email, password });
         if (error) return res.status(400).json({ error: error.message });
 
         const userEmail = data.user?.email || email;
@@ -71,9 +71,10 @@ router.post('/admin-setup', adminSetupLimiter, async (req, res, next) => {
             return res.json({ pending: true, message: 'Check your inbox to confirm your email, then sign in at /login — admin access will be applied automatically.' });
         }
 
-        const { error: profileErr } = await supabase
+        const { error: profileErr } = await getSupabaseAdmin()
             .from('user_profiles')
             .upsert({
+                id: data.user.id,
                 user_email: userEmail,
                 full_name: fullName.trim(),
                 role: 'admin',
@@ -135,6 +136,7 @@ router.get('/google/callback', async (req, res) => {
         }
 
         const session = await resp.json();
+        if (session.user) await ensureProfile(session.user);
         setSessionCookies(res, session);
         res.redirect(`${config.frontendUrl}/dashboard`);
     } catch (err) {

@@ -3,14 +3,14 @@ import multer from 'multer';
 import { requireAuth } from '../middleware/auth.js';
 import { uploadLimiter } from '../middleware/security.js';
 import { getSupabaseAdmin } from '../utils/supabaseAdmin.js';
-import { getTablePolicy, isKnownTable } from '../config/tablePolicies.js';
+import { getTablePolicy } from '../config/tablePolicies.js';
 import { config } from '../config/env.js';
 
 const router = Router();
 
-// Every upload today is an image (recipe/exercise/program/testimonial/blog
-// cover art, avatars, body-progress photos, AI food-scan snapshots) — no PDF
-// or other file type is ever sent, so this is a real allowlist, not a guess.
+// Every upload today is an image (recipe/exercise/program/testimonial cover
+// art, avatars, body-progress photos, AI food-scan snapshots) — no PDF or
+// other file type is ever sent, so this is a real allowlist, not a guess.
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic']);
 const MAX_BYTES = 8 * 1024 * 1024;
 
@@ -22,26 +22,35 @@ const upload = multer({
     },
 });
 
-// body_progress photos are personal/sensitive — keep them out of the public
-// bucket entirely and hand back a time-limited signed URL instead.
-const PRIVATE_TABLES = new Set(['body_progress']);
+// Named upload purposes, not client-chosen table names — the client picks
+// one of these 7 fixed targets, never an arbitrary table. body-progress-photo
+// is the only one routed to the private bucket (personal/sensitive photos,
+// signed URLs only, never publicly listable).
+const UPLOAD_TARGETS = {
+    avatar: { table: 'user_profiles' },
+    'recipe-image': { table: 'recipes' },
+    'exercise-image': { table: 'exercises' },
+    'program-image': { table: 'programs' },
+    'testimonial-image': { table: 'testimonials' },
+    'meal-photo': { table: 'meal_logs' },
+    'body-progress-photo': { table: 'body_progress', private: true },
+};
 
-// ── POST /api/upload?table=<table> ──────────────────────────────────────────
-router.post('/', requireAuth, uploadLimiter, upload.single('file'), async (req, res, next) => {
+// ── POST /api/uploads/:target ───────────────────────────────────────────────
+router.post('/:target', requireAuth, uploadLimiter, upload.single('file'), async (req, res, next) => {
     try {
-        const table = req.query.table;
-        if (!table || !isKnownTable(table)) return res.status(404).json({ error: 'Unknown table.' });
+        const target = UPLOAD_TARGETS[req.params.target];
+        if (!target) return res.status(404).json({ error: 'Unknown upload target.' });
 
-        const policy = getTablePolicy(table);
+        const policy = getTablePolicy(target.table);
         const canWrite = req.isAdmin || policy.create === 'own' || policy.create === 'public';
         if (!canWrite) return res.status(403).json({ error: 'Not allowed.' });
 
         if (!req.file) return res.status(400).json({ error: 'No file provided, or file type/size rejected.' });
 
         const ext = (req.file.originalname.split('.').pop() || 'bin').toLowerCase();
-        const path = `${table}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-        const isPrivate = PRIVATE_TABLES.has(table);
-        const bucket = isPrivate ? config.supabase.privateBucket : config.supabase.publicBucket;
+        const path = `${target.table}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+        const bucket = target.private ? config.supabase.privateBucket : config.supabase.publicBucket;
 
         const supabase = getSupabaseAdmin();
         const { error: uploadErr } = await supabase.storage
@@ -49,7 +58,7 @@ router.post('/', requireAuth, uploadLimiter, upload.single('file'), async (req, 
             .upload(path, req.file.buffer, { contentType: req.file.mimetype, upsert: false });
         if (uploadErr) throw uploadErr;
 
-        if (isPrivate) {
+        if (target.private) {
             const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 60 * 60 * 24 * 7);
             if (error) throw error;
             return res.json({ file_url: data.signedUrl });

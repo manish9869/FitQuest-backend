@@ -16,13 +16,27 @@ cp .env.example .env   # fill in SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, GROQ_A
 npm run dev
 ```
 
-**Required one-time step:** open the Supabase SQL Editor for your project and
-run `sql/001_gamification.sql`. It creates the `automation_runs` /
-`daily_xp_sync` tables and the `sync_login_streak` / `sync_daily_xp` /
-`unlock_achievements` RPC functions the gamification routes call. Read the
-assumptions comment at the top of that file first — it's written against the
-column types the app's existing queries imply (e.g. `achievements` as
-`text[]`), and asks you to confirm/adjust if your schema differs.
+**Required one-time step (fresh/empty Supabase project):** open the Supabase
+SQL Editor for your project and run, in order:
+
+1. `sql/000_schema.sql` — creates all ~28 application tables (derived from
+   every column the frontend/backend actually read and write), with RLS
+   enabled and no policies (service-role key bypasses RLS regardless — this
+   is just defense-in-depth against a leaked anon key).
+2. `sql/001_gamification.sql` — creates the `automation_runs` /
+   `daily_xp_sync` tables and the `sync_login_streak` / `sync_daily_xp` /
+   `unlock_achievements` RPC functions the gamification routes call. Depends
+   on `automations` and `user_profiles` from step 1.
+3. `sql/002_service_role_policies.sql` — grants `service_role` explicit
+   access via policy on every table. On some projects the service-role key
+   doesn't get automatic RLS bypass through PostgREST (confirmed on this
+   project even with a genuine `service_role`-claimed JWT — writes were
+   rejected with `42501` until this ran). Run this regardless; it's a no-op
+   if your project's automatic bypass does work.
+
+If you're pointing at a Supabase project that already has this app's tables
+from before, skip `000_schema.sql` (or diff it against your schema first) and
+just run `001_gamification.sql`.
 
 ## How auth works
 
@@ -42,12 +56,43 @@ honor alongside `Secure`.
 
 - `POST /api/auth/{login,signup,admin-setup,logout}`, `GET /api/auth/session`,
   `GET /api/auth/google/{start,callback}`, `PATCH /api/auth/profile`
-- `GET|POST|PATCH|DELETE /api/data/:table[/:id]`, `POST /api/data/:table/upsert`
-  — generic CRUD, table names match `src/config/tablePolicies.js` keys
-- `POST /api/upload?table=<table>` — multipart `file` field
+- Named, fixed-path resource routes — no client-supplied table name, no
+  wildcard route. Each of `src/routes/resources/*.routes.js` registers a
+  handful of hardcoded `(URL path, SQL table)` pairs via the shared
+  `mountResource()` helper (`src/routes/resources/_mount.js`), which still
+  delegates to the one policy-checked `dataController.js` under the hood —
+  only *how the client reaches it* changed. Every resource gets the standard
+  verb set: `GET /api/<resource>`, `GET/PATCH/DELETE /api/<resource>/:id`,
+  `POST /api/<resource>`, `POST /api/<resource>/upsert`. Current resources:
+  `meals`, `recipes`, `food-items`, `grocery-lists`, `workout-logs`,
+  `workout-plans`, `workout-templates`, `step-logs`, `exercises`,
+  `sleep-logs`, `water-logs`, `weight-logs`, `supplement-logs`,
+  `user-supplements`, `body-progress`, `achievements`, `missions`,
+  `challenges`, `automation-rules`, `coach-plans`, `chat-messages`,
+  `user-profiles`, `user-feature-overrides`, `feature-flags`, `testimonials`,
+  `programs`, `admin-notes`, `admin-tasks`.
+- `POST /api/uploads/:target` — multipart `file` field, `:target` is one of a
+  fixed whitelist (`avatar`, `recipe-image`, `exercise-image`,
+  `program-image`, `testimonial-image`, `meal-photo`,
+  `body-progress-photo`) in `routes/upload.routes.js`, each hardcoded to its
+  own table/bucket.
 - `POST /api/llm/invoke` — `{prompt, response_json_schema}` → Groq, proxied
 - `POST /api/gamification/{login-streak,sync-daily,check-achievements}`
 - `POST /api/automations/run`
+
+Adding a new resource is a one-line `mountResource(router, 'path', 'table')`
+call in the right domain file under `src/routes/resources/` (plus a
+`TABLE_POLICIES` entry in `tablePolicies.js` if the table is new) — not a new
+handler.
+
+## Auto-created profiles
+
+There's no onboarding wizard gating signup. `src/services/profileService.js`
+(`ensureProfile`) runs after every successful login/signup/Google callback
+and creates a default `user_profiles` row (generic body-stat defaults,
+computed calorie/macro targets) the first time it sees a user with none —
+login goes straight to the dashboard, and real stats get filled in later via
+Profile/Settings.
 
 ## Deploying alongside a white-labeled frontend
 
