@@ -18,9 +18,36 @@ const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: MAX_BYTES },
     fileFilter: (req, file, cb) => {
+        // Content-Type is a client-supplied header — trivially spoofable
+        // (e.g. an attacker naming an arbitrary file "photo.jpg" with a
+        // forged image/jpeg header). This only filters obviously-wrong
+        // uploads early; the real check is matchesDeclaredType() below,
+        // which inspects the actual file bytes once multer has the buffer.
         cb(null, ALLOWED_MIME.has(file.mimetype));
     },
 });
+
+// Real content validation via magic bytes — the declared mimetype/filename
+// is never trusted alone. Covers every format in ALLOWED_MIME.
+function matchesDeclaredType(buffer, mimetype) {
+    if (!buffer || buffer.length < 12) return false;
+    const b = buffer;
+    switch (mimetype) {
+        case 'image/jpeg':
+            return b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
+        case 'image/png':
+            return b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47;
+        case 'image/gif':
+            return b.toString('ascii', 0, 6) === 'GIF87a' || b.toString('ascii', 0, 6) === 'GIF89a';
+        case 'image/webp':
+            return b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP';
+        case 'image/heic':
+            // ISO base media file format: 4-byte size, then 'ftyp', then a brand
+            return b.toString('ascii', 4, 8) === 'ftyp';
+        default:
+            return false;
+    }
+}
 
 // Named upload purposes, not client-chosen table names — the client picks
 // one of these 7 fixed targets, never an arbitrary table. body-progress-photo
@@ -47,6 +74,9 @@ router.post('/:target', requireAuth, uploadLimiter, upload.single('file'), async
         if (!canWrite) return res.status(403).json({ error: 'Not allowed.' });
 
         if (!req.file) return res.status(400).json({ error: 'No file provided, or file type/size rejected.' });
+        if (!matchesDeclaredType(req.file.buffer, req.file.mimetype)) {
+            return res.status(400).json({ error: 'File content does not match its declared type.' });
+        }
 
         const ext = (req.file.originalname.split('.').pop() || 'bin').toLowerCase();
         const path = `${target.table}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;

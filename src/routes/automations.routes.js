@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
+import { gamificationLimiter } from '../middleware/security.js';
 import { runAutomationsForUser } from '../services/automationService.js';
 
 const router = Router();
@@ -8,7 +9,7 @@ const router = Router();
 // Replaces client-side automationEngine.runAutomations — the server derives
 // its own snapshot from the log tables and dedupes "already ran today" via
 // the automation_runs table instead of a spoofable localStorage key.
-router.post('/run', requireAuth, async (req, res, next) => {
+router.post('/run', requireAuth, gamificationLimiter, async (req, res, next) => {
     try {
         const { client_date } = req.body || {};
         const result = await runAutomationsForUser({

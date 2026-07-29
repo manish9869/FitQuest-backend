@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
+import { gamificationLimiter } from '../middleware/security.js';
 import { updateLoginStreak, syncDailyProgress, checkAndUnlockAchievements } from '../services/gamificationService.js';
 
 const router = Router();
 
-router.use(requireAuth);
+router.use(requireAuth, gamificationLimiter);
 
 // ── POST /api/gamification/login-streak ─────────────────────────────────────
 // Called once per session on dashboard mount. Replaces the old client-side

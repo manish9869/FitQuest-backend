@@ -151,6 +151,19 @@ export async function upsertRow(req, res, next) {
         if (!canCreate && !canUpdate) return policyError(res);
 
         const { payload, onConflict = 'id' } = req.body || {};
+
+        // Forcing ownerField into the payload is only safe when the conflict
+        // target IS the ownerField (e.g. upsert-by-user_email) — the upsert
+        // can then only ever touch a row that already matches the caller's
+        // own email. If onConflict were something else (e.g. 'id') on an
+        // 'own' table, a non-admin could upsert with someone else's row id
+        // and this same forced field would silently reassign that existing
+        // row's ownership to themselves (Postgres's ON CONFLICT DO UPDATE
+        // matches and overwrites the existing row, not just their own).
+        if (!req.isAdmin && policy.ownerField && onConflict !== policy.ownerField) {
+            return policyError(res, `Upsert on this resource must use onConflict: '${policy.ownerField}'.`);
+        }
+
         const clean = stripDeniedFields(table, payload, { isAdmin: req.isAdmin });
         if (!req.isAdmin && policy.ownerField) clean[policy.ownerField] = req.user.email;
 

@@ -75,4 +75,15 @@ export const llmLimiter = rateLimit({
     message: { error: 'Too many AI requests. Please try again later.' },
 });
 
+// Gamification sync / automation run — each call fans out into several
+// queries (sync-daily alone runs ~12 in parallel) plus a write RPC. The
+// global limiter alone is generous enough to let a client hammer these.
+export const gamificationLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests. Please try again later.' },
+});
+
 export const compressionMiddleware = compression();
