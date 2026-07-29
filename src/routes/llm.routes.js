@@ -31,7 +31,13 @@ router.post('/invoke', requireAuth, llmLimiter, async (req, res, next) => {
                         ? `${prompt}\n\nRespond ONLY with valid JSON matching this schema: ${JSON.stringify(response_json_schema)}. No markdown, no explanation.`
                         : prompt,
                 }],
-                max_tokens: 1000,
+                max_tokens: 1500,
+                temperature: 0.4,
+                // Groq's real structured-output mode (OpenAI-compatible) — the
+                // model is constrained to emit valid JSON at the API level,
+                // instead of just being asked nicely in the prompt text. Cuts
+                // down substantially on malformed/truncated responses.
+                ...(response_json_schema ? { response_format: { type: 'json_object' } } : {}),
             }),
         });
 
@@ -47,8 +53,12 @@ router.post('/invoke', requireAuth, llmLimiter, async (req, res, next) => {
         if (response_json_schema) {
             try {
                 return res.json({ result: JSON.parse(text.replace(/```json|```/g, '').trim()) });
-            } catch {
-                return res.json({ result: {} });
+            } catch (parseErr) {
+                // Previously silently returned {}, which meant the frontend
+                // just rendered blank with no explanation. Surface it as a
+                // real error instead so the UI can show "please retry".
+                logger.error('LLM returned unparseable JSON', { error: parseErr.message, raw: text.slice(0, 500) });
+                return res.status(502).json({ error: 'AI response could not be parsed. Please try again.' });
             }
         }
         res.json({ result: text });
