@@ -33,7 +33,11 @@ export const TABLE_POLICIES = {
     achievements: { read: 'public', create: 'admin', update: 'admin', delete: 'admin' },
     admin_notes: { read: 'admin', create: 'admin', update: 'admin', delete: 'admin' },
     admin_tasks: { read: 'admin', create: 'admin', update: 'admin', delete: 'admin' },
-    automations: { read: 'admin', create: 'admin', update: 'admin', delete: 'admin' },
+    // read: 'public' — MessageNotifier (global dashboard shell, runs for every
+    // logged-in user) reads active rules client-side to decide which
+    // notification banners to show. No sensitive data on this table (just
+    // rule name/trigger/action config); write access stays admin-only.
+    automations: { read: 'public', create: 'admin', update: 'admin', delete: 'admin' },
 
     body_progress: { read: 'own', create: 'own', update: 'own', delete: 'own', ownerField: 'user_email' },
 
