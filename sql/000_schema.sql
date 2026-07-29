@@ -66,20 +66,26 @@ create table if not exists public.recipes (
 );
 
 create table if not exists public.food_items (
-    id                  uuid primary key default gen_random_uuid(),
-    name                text not null,
-    category            text,
-    calories_per_100g   numeric,
-    protein_per_100g    numeric,
-    carbs_per_100g      numeric,
-    fats_per_100g       numeric,
-    fiber_per_100g      numeric,
-    serving_size_g      numeric,
-    serving_label       text,
-    barcode             text,
-    is_verified         boolean not null default false,
-    is_popular          boolean not null default false,
-    created_at          timestamptz not null default now()
+    id                      uuid primary key default gen_random_uuid(),
+    name                    text not null,
+    category                text,
+    calories_per_100g       numeric,
+    protein_per_100g        numeric,
+    carbs_per_100g          numeric,
+    fats_per_100g           numeric,
+    fiber_per_100g          numeric,
+    sugar_per_100g          numeric,
+    sodium_mg_per_100g      numeric,
+    calcium_mg_per_100g     numeric,
+    iron_mg_per_100g        numeric,
+    vitamin_c_mg_per_100g   numeric,
+    folate_mcg_per_100g     numeric,
+    serving_size_g          numeric,
+    serving_label           text,
+    barcode                 text,
+    is_verified             boolean not null default false,
+    is_popular              boolean not null default false,
+    created_at              timestamptz not null default now()
 );
 
 create table if not exists public.grocery_lists (

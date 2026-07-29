@@ -33,6 +33,10 @@ export const config = {
     adminInviteCode: process.env.ADMIN_INVITE_CODE || '',
 
     groqApiKey: process.env.GROQ_API_KEY || '',
+    // Vision-capable — used only for requests that include an image
+    // (e.g. the Food Scanner), since Groq's models on this account are
+    // text-only. Everything else keeps using Groq.
+    geminiApiKey: process.env.GEMINI_API_KEY || '',
 
     allowedOrigins: process.env.ALLOWED_ORIGINS
         ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
